@@ -10,11 +10,11 @@ _model: WhisperModel | None = None
 def get_model() -> WhisperModel:
     global _model
     if _model is None:
-        print(f"[ASR] 加载 Whisper {settings.asr_model} on {settings.asr_device}...")
+        print(f"[ASR] Loading Whisper {settings.asr_model} on {settings.asr_device}...")
         _model = WhisperModel(
             settings.asr_model,
             device=settings.asr_device,
             compute_type=settings.asr_compute_type,
         )
-        print("[ASR] 模型加载完成")
+        print("[ASR] Model loaded successfully")
     return _model
