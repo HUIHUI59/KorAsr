@@ -36,6 +36,8 @@ class Settings(BaseSettings):
             return [item.strip() for item in v.split(",") if item.strip()]
         return v
 
-    model_config = {"env_file": ".env"}
+    database_url: str = "sqlite:///./data/korasr.db"
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 settings = Settings()
