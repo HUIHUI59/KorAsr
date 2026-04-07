@@ -9,6 +9,48 @@ SAMPLE_RATE = 16000
 OVERLAP_SAMPLES = int(SAMPLE_RATE * 0.4)  # 400ms 重叠窗口，防止切词
 
 
+def transcribe_audio(audio: np.ndarray, fast: bool = False, initial_prompt: str = "") -> str:
+    """Run Whisper inference on an audio array.
+
+    fast=True  → beam_size=2, temperature=0 (greedy, ~3x faster) — used for interim previews.
+    fast=False → beam_size from config, temperature fallback sequence — used for finals.
+
+    initial_prompt is prepended to the decoder context so Whisper remembers what was
+    said in previous segments (rolling context from the caller).
+    """
+    model = get_model()
+
+    prompt = initial_prompt.strip() if initial_prompt else settings.asr_initial_prompt
+
+    segments, _ = model.transcribe(
+        audio,
+        language="ko",
+        beam_size=2 if fast else settings.asr_beam_size,
+        temperature=0 if fast else (0, 0.2, 0.4),   # fallback sequence: greedy → low heat → medium
+        vad_filter=False,                              # Silero VAD handles segmentation upstream
+        condition_on_previous_text=True,
+        initial_prompt=prompt,
+        no_speech_threshold=settings.asr_no_speech_threshold,
+        compression_ratio_threshold=settings.asr_compression_ratio_threshold,
+        log_prob_threshold=settings.asr_log_prob_threshold,
+        repetition_penalty=settings.asr_repetition_penalty,
+    )
+
+    parts = []
+    for seg in segments:
+        # Skip segments Whisper itself flagged as low-confidence
+        # (avg_logprob is per-segment; faster-whisper exposes it on the NamedTuple)
+        if hasattr(seg, "avg_logprob") and seg.avg_logprob < settings.asr_log_prob_threshold:
+            continue
+        parts.append(seg.text)
+
+    text = "".join(parts).strip()
+
+    if any(w in text for w in settings.hallucination_blacklist) and len(text) < 45:
+        return ""
+    return text
+
+
 class Transcriber:
     def __init__(self):
         self.model = get_model()
@@ -56,26 +98,11 @@ class Transcriber:
             "speech_prob": vad_result["speech_prob"],
         }
 
-    def transcribe(self) -> str:
+    def transcribe(self, initial_prompt: str = "") -> str:
         """对当前缓冲区执行 Whisper 推理，返回韩语文本"""
         if len(self.audio_buffer) == 0:
             return ""
-
-        audio = self.audio_buffer.copy()
-        segments, _ = self.model.transcribe(
-            audio,
-            language="ko",
-            beam_size=settings.asr_beam_size,
-            vad_filter=False,  # 我们自己做 VAD，不用 Whisper 内置的
-            condition_on_previous_text=True,
-        )
-        text = "".join(s.text for s in segments).strip()
-
-        # 过滤幻觉
-        if any(w in text for w in settings.hallucination_blacklist) and len(text) < 25:
-            return ""
-
-        return text
+        return transcribe_audio(self.audio_buffer.copy(), initial_prompt=initial_prompt)
 
     def commit(self):
         """最终处理后，保留重叠窗口并重置 VAD 状态"""
