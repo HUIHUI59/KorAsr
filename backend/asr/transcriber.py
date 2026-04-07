@@ -9,7 +9,7 @@ SAMPLE_RATE = 16000
 OVERLAP_SAMPLES = int(SAMPLE_RATE * 0.4)  # 400ms 重叠窗口，防止切词
 
 
-def transcribe_audio(audio: np.ndarray, fast: bool = False, initial_prompt: str = "") -> str:
+def transcribe_audio(audio: np.ndarray, fast: bool = False, initial_prompt: str | None = None) -> str:
     """Run Whisper inference on an audio array.
 
     fast=True  → beam_size=2, temperature=0 (greedy, ~3x faster) — used for interim previews.
@@ -20,13 +20,13 @@ def transcribe_audio(audio: np.ndarray, fast: bool = False, initial_prompt: str 
     """
     model = get_model()
 
-    prompt = initial_prompt.strip() if initial_prompt else settings.asr_initial_prompt
+    prompt = initial_prompt.strip() if initial_prompt is not None else settings.asr_initial_prompt
 
     segments, _ = model.transcribe(
         audio,
         language="ko",
         beam_size=2 if fast else settings.asr_beam_size,
-        temperature=0 if fast else (0, 0.2, 0.4),   # fallback sequence: greedy → low heat → medium
+        temperature=0.0 if fast else (0.0, 0.2, 0.4),   # fallback sequence: greedy → low heat → medium
         vad_filter=False,                              # Silero VAD handles segmentation upstream
         condition_on_previous_text=True,
         initial_prompt=prompt,
@@ -38,14 +38,16 @@ def transcribe_audio(audio: np.ndarray, fast: bool = False, initial_prompt: str 
 
     parts = []
     for seg in segments:
-        # Skip segments Whisper itself flagged as low-confidence
-        # (avg_logprob is per-segment; faster-whisper exposes it on the NamedTuple)
+        # Discard segments that survived all temperature fallbacks but are still
+        # below the confidence threshold (extra gate beyond model.transcribe's internal check)
         if hasattr(seg, "avg_logprob") and seg.avg_logprob < settings.asr_log_prob_threshold:
             continue
         parts.append(seg.text)
 
     text = "".join(parts).strip()
 
+    # Short texts under 45 chars that contain blacklist words are hallucinations;
+    # longer texts may legitimately include words like "감사합니다" in real speech.
     if any(w in text for w in settings.hallucination_blacklist) and len(text) < 45:
         return ""
     return text
@@ -98,7 +100,7 @@ class Transcriber:
             "speech_prob": vad_result["speech_prob"],
         }
 
-    def transcribe(self, initial_prompt: str = "") -> str:
+    def transcribe(self, initial_prompt: str | None = None) -> str:
         """对当前缓冲区执行 Whisper 推理，返回韩语文本"""
         if len(self.audio_buffer) == 0:
             return ""
