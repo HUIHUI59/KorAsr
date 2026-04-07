@@ -1,4 +1,5 @@
 # backend/asr/transcriber.py
+import time
 import numpy as np
 from backend.asr.model import get_model
 from backend.asr.vad import SileroVAD
@@ -18,11 +19,13 @@ class Transcriber:
         )
         self.audio_buffer = np.array([], dtype=np.float32)
         self._buffer_start_s: float = 0.0
+        self._buffer_wall_start: float = 0.0
         self.session_start_ms: float = 0.0
 
     def reset(self, session_start_ms: float = 0.0):
         self.audio_buffer = np.array([], dtype=np.float32)
         self._buffer_start_s = 0.0
+        self._buffer_wall_start = time.time()
         self.vad.reset()
         self.session_start_ms = session_start_ms
 
@@ -32,8 +35,8 @@ class Transcriber:
 
     @property
     def timestamp_ms(self) -> int:
-        """当前缓冲区起始时间（相对于会话开始）"""
-        return int((self._buffer_start_s * 1000) - self.session_start_ms)
+        """Milliseconds elapsed from session start to when this buffer began accumulating."""
+        return max(0, int((self._buffer_wall_start - self.session_start_ms / 1000) * 1000))
 
     def push_chunk(self, chunk: np.ndarray) -> dict:
         """
@@ -81,4 +84,5 @@ class Transcriber:
         else:
             self.audio_buffer = np.array([], dtype=np.float32)
         self._buffer_start_s = len(self.audio_buffer) / SAMPLE_RATE
+        self._buffer_wall_start = time.time()
         self.vad.reset()
