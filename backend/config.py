@@ -10,17 +10,26 @@ class Settings(BaseSettings):
     asr_model: str = "large-v3"
     asr_device: str = "cuda"
     asr_compute_type: str = "float16"
-    asr_beam_size: int = 5
+    asr_beam_size: int = 5                        # up from 3 — better accuracy, ~same latency on 4090
+    asr_initial_prompt: str = "안녕하세요. 다음은 한국어 강의 및 회의 내용입니다."  # Korean prompt → far fewer TV hallucinations
     asr_max_buffer_s: float = 8.0
     asr_min_buffer_s: float = 0.5
+    asr_no_speech_threshold: float = 0.6          # was hardcoded 0.7 in transcriber; exposed here
+    asr_compression_ratio_threshold: float = 2.2  # discard overly repetitive outputs (hallucination signal)
+    asr_log_prob_threshold: float = -1.0           # discard very low-confidence segments
+    asr_repetition_penalty: float = 1.1            # penalise repeated tokens at decoder level
 
     vad_threshold: float = 0.5
-    vad_min_silence_ms: int = 600
+    vad_min_silence_ms: int = 600                  # down from 1000 — faster sentence boundary detection
     vad_min_speech_ms: int = 250
 
     # Union type prevents pydantic-settings from attempting json.loads before the validator
     hallucination_blacklist: Union[List[str], str] = [
-        "자막", "감사합니다", "시청해주셔서", "구독", "좋아요", "MBC", "SBS", "KBS"
+        "자막", "시청해주셔서", "구독", "좋아요", "MBC", "SBS", "KBS",
+        "기상캐스터", "다음 영상에서 만나요", "시청자 여러분",
+        "Korean university lecture", "이것은 한국 대학교",
+        "자막 제공", "번역 제공", "cc 자막", "한국어 자막",
+        "감사합니다", "안녕하세요", "시청해 주셔서",
     ]
 
     @field_validator("hallucination_blacklist", mode="before")
