@@ -36,18 +36,12 @@ def transcribe_audio(audio: np.ndarray, fast: bool = False, initial_prompt: str 
         repetition_penalty=settings.asr_repetition_penalty,
     )
 
-    parts = []
-    for seg in segments:
-        # Discard segments that survived all temperature fallbacks but are still
-        # below the confidence threshold (extra gate beyond model.transcribe's internal check)
-        if hasattr(seg, "avg_logprob") and seg.avg_logprob < settings.asr_log_prob_threshold:
-            continue
-        parts.append(seg.text)
+    parts = [seg.text for seg in segments]
 
     text = "".join(parts).strip()
 
-    # Short texts under 45 chars that contain blacklist words are hallucinations;
-    # longer texts may legitimately include words like "감사합니다" in real speech.
+    # Short texts under 45 chars containing a blacklist word are hallucinations.
+    # Longer texts may legitimately contain those words (e.g. "감사합니다" in a full closing sentence).
     if any(w in text for w in settings.hallucination_blacklist) and len(text) < 45:
         return ""
     return text
@@ -55,7 +49,6 @@ def transcribe_audio(audio: np.ndarray, fast: bool = False, initial_prompt: str 
 
 class Transcriber:
     def __init__(self):
-        self.model = get_model()
         self.vad = SileroVAD(
             threshold=settings.vad_threshold,
             min_silence_ms=settings.vad_min_silence_ms,

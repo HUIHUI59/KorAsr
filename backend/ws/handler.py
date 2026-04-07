@@ -17,7 +17,10 @@ from backend.storage.models import Session as SessionModel, Segment
 INTERIM_INTERVAL = 1.2      # seconds between interim attempts
 MAX_CONTEXT_CHARS = 200     # rolling prompt is trimmed to this length
 
-# One GPU slot at a time. Interims skip (non-blocking) if GPU is busy.
+# One GPU slot at a time — module-level so it is shared across ALL sessions.
+# On a single-GPU machine this is the correct behaviour: concurrent sessions
+# share the same physical device and must not run inference simultaneously.
+# Interims skip (non-blocking) if GPU is busy.
 # Finals always wait — semaphore is released BEFORE translation so the
 # next sentence can start transcribing while Moonshot is in flight.
 _gpu_sem = asyncio.Semaphore(1)
