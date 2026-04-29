@@ -757,7 +757,7 @@ async def handle_ws(websocket: WebSocket, session_id: str):
                 last_interim_time = time.time()
 
                 async def _process_final(audio, seg_id, ts, s_id, seq_num):
-                    ko = await asyncio.to_thread(lambda: _transcribe_sync(transcriber, audio))
+                    ko = await asyncio.to_thread(lambda: _transcribe_sync(audio))
                     if not ko:
                         return
 

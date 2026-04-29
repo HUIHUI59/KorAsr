@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>AI 本地流式同传工作站</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #5856D6;
+            --danger: #FF3B30;
+            --success: #34C759;
+            --bg: #F2F2F7;
+            --card: #FFFFFF;
+            --text: #1C1C1E;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        body { 
+            font-family: 'Inter', -apple-system, sans-serif; 
+            margin: 0; padding: 20px; 
+            background-color: var(--bg); color: var(--text);
+            display: flex; flex-direction: column; height: 100vh;
+        }
+
+        .header { text-align: center; margin-bottom: 20px; }
+        .header h2 { margin: 0; font-weight: 600; font-size: 1.5rem; letter-spacing: -0.5px; }
+
+        #status-bar {
+            background: var(--card);
+            padding: 12px; border-radius: 12px;
+            margin-bottom: 15px; font-size: 14px;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; background: #8E8E93; }
+        .dot.active { background: var(--success); box-shadow: 0 0 8px var(--success); animation: pulse 1.5s infinite; }
+        .dot.error { background: var(--danger); }
+
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        button {
+            border: none; padding: 16px; border-radius: 14px; font-size: 16px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #startBtn { background: var(--primary); color: white; }
+        #stopBtn { background: #E5E5EA; color: #3A3A3C; }
+        #clearBtn { grid-column: span 2; background: transparent; color: var(--danger); border: 1px solid #FFD5D2; margin-top: 5px; }
+        button:active { transform: scale(0.96); opacity: 0.9; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+        #transcription {
+            flex: 1; background: var(--card); border-radius: 20px; padding: 20px;
+            overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border: 1px solid rgba(0,0,0,0.05);
+            display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth;
+        }
+        
+        .bilingual-card { 
+            padding: 14px 16px; background: #F9F9FB; border-radius: 14px; 
+            animation: fadeIn 0.3s ease; border-left: 4px solid var(--primary);
+            display: flex; flex-direction: column; gap: 6px;
+        }
+        /* 正在识别时的边框特效 */
+        .bilingual-card.interim { border-left-color: #FF9500; background: #FFFBF2; }
+        
+        .ko-text { font-size: 17px; font-weight: 600; color: #1C1C1E; line-height: 1.4; }
+        .zh-text { font-size: 15px; font-weight: 400; color: #636366; line-height: 1.4; transition: color 0.3s; }
+        
+        .translating { color: #AEAEB2; animation: pulse 1s infinite alternate; font-style: italic; }
+        .interim-hint { color: #FF9500; font-style: italic; font-size: 14px; }
+        .empty-hint { color: #AEAEB2; text-align: center; margin-top: 40px; font-style: italic; }
+
+        @keyframes pulse { 0% { opacity: 1; } 100% { opacity: 0.5; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h2>Whisper 本地流式工作站</h2>
+    </div>
+
+    <div id="status-bar">
+        <span id="status-dot" class="dot"></span>
+        <span id="status-text">就绪</span>
+    </div>
+
+    <div class="controls">
+        <button id="startBtn">开始同传</button>
+        <button id="stopBtn" disabled>结束</button>
+        <button id="clearBtn">清除记录</button>
+    </div>
+
+    <div id="transcription">
+        <div class="empty-hint">等待语音输入...</div>
+    </div>
+
+    <script>
+        let socket, audioContext, scriptProcessor, mediaStream;
+        const startBtn = document.getElementById('startBtn'),
+              stopBtn = document.getElementById('stopBtn'),
+              clearBtn = document.getElementById('clearBtn'),
+              statusText = document.getElementById('status-text'),
+              statusDot = document.getElementById('status-dot'),
+              transcription = document.getElementById('transcription');
+
+        clearBtn.onclick = () => { transcription.innerHTML = '<div class="empty-hint">记录已清空</div>'; };
+
+        startBtn.onclick = async () => {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            try {
+                socket = new WebSocket(wsUrl);
+                statusText.innerText = "连接中...";
+            } catch (e) {
+                updateStatus("连接失败", "error"); return;
+            }
+
+            socket.onopen = async () => {
+                try {
+                    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                    const source = audioContext.createMediaStreamSource(mediaStream);
+                    scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+                    source.connect(scriptProcessor); scriptProcessor.connect(audioContext.destination);
+                    
+                    scriptProcessor.onaudioprocess = (e) => {
+                        if (socket.readyState === WebSocket.OPEN) {
+                            socket.send(e.inputBuffer.getChannelData(0).buffer);
+                        }
+                    };
+
+                    updateStatus("同传中...", "active");
+                    startBtn.disabled = true; stopBtn.disabled = false;
+                    if(document.querySelector('.empty-hint')) transcription.innerHTML = '';
+                    
+                } catch (err) { updateStatus("麦克风受阻", "error"); }
+            };
+
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    let card = document.getElementById(data.id);
+                    
+                    if (!card) {
+                        card = document.createElement('div');
+                        card.id = data.id;
+                        transcription.appendChild(card);
+                    }
+                    
+                    // 根据不同状态渲染卡片外观
+                    if (data.status === 'interim') {
+                        card.className = 'bilingual-card interim';
+                        card.innerHTML = `<div class="ko-text">${data.ko}</div><div class="zh-text interim-hint">${data.zh}</div>`;
+                    } else if (data.status === 'translating') {
+                        card.className = 'bilingual-card';
+                        card.innerHTML = `<div class="ko-text">${data.ko}</div><div class="zh-text translating">${data.zh}</div>`;
+                    } else if (data.status === 'done') {
+                        card.className = 'bilingual-card';
+                        card.innerHTML = `<div class="ko-text">${data.ko}</div><div class="zh-text">${data.zh}</div>`;
+                    }
+                    
+                    transcription.scrollTop = transcription.scrollHeight;
+                } catch (err) { console.error("数据解析失败:", err); }
+            };
+
+            socket.onclose = () => { updateStatus("连接断开", ""); stopRecording(); };
+        };
+
+        stopBtn.onclick = stopRecording;
+        function updateStatus(text, type) { statusText.innerText = text; statusDot.className = "dot " + type; }
+        function stopRecording() {
+            if (scriptProcessor) scriptProcessor.disconnect();
+            if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+            if (audioContext) audioContext.close();
+            if (socket && socket.readyState === WebSocket.OPEN) socket.close();
+            startBtn.disabled = false; stopBtn.disabled = true;
+            if(!statusDot.classList.contains('error')) updateStatus("就绪", "");
+        }
+    </script>
+</body>
+</html>

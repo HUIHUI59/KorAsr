@@ -40,17 +40,34 @@ export const useSessionStore = defineStore('session', () => {
       timerInterval = setInterval(() => { elapsedMs.value += 100 }, 100)
     }
 
+    const STATUS_PRIORITY = { interim: 0, translating: 1, done: 2 }
+
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data)
+      if (data.status === 'remove') {
+        segments.value = segments.value.filter(s => s.id !== data.id)
+        return
+      }
       const idx = segments.value.findIndex(s => s.id === data.id)
       if (idx >= 0) {
-        segments.value[idx] = { ...segments.value[idx], ...data }
+        const curP = STATUS_PRIORITY[segments.value[idx].status] ?? -1
+        const newP = STATUS_PRIORITY[data.status] ?? -1
+        if (newP >= curP) {
+          segments.value[idx] = { ...segments.value[idx], ...data }
+        }
+        // stale interim arriving after translating/done → silently discard
       } else {
         segments.value.push({ ...data, is_starred: false })
       }
     }
 
     ws.onclose = () => {
+      isConnected.value = false
+      isRecording.value = false
+      clearInterval(timerInterval)
+    }
+
+    ws.onerror = () => {
       isConnected.value = false
       isRecording.value = false
       clearInterval(timerInterval)

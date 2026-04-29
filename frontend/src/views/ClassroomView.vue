@@ -23,8 +23,10 @@
         <button :class="{ active: activeTab === 'feed' }" @click="activeTab = 'feed'">Transcript</button>
         <button :class="{ active: activeTab === 'notes' }" @click="activeTab = 'notes'">Notes</button>
       </div>
-      <TranscriptFeed v-if="activeTab === 'feed'" :segments="store.segments" @star="store.toggleStar" />
-      <NotesPad v-else v-model="notesModel" style="flex:1" />
+      <div class="tab-content">
+        <TranscriptFeed v-if="activeTab === 'feed'" :segments="store.segments" @star="store.toggleStar" />
+        <NotesPad v-else v-model="notesModel" style="flex:1" />
+      </div>
     </div>
 
     <!-- Start modal -->
@@ -42,7 +44,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { useSessionStore } from '../stores/session.js'
 import StatusBar from '../components/StatusBar.vue'
@@ -50,7 +52,10 @@ import TranscriptFeed from '../components/TranscriptFeed.vue'
 import NotesPad from '../components/NotesPad.vue'
 
 const store = useSessionStore()
-const isMobile = computed(() => window.innerWidth < 768)
+const isMobile = ref(window.innerWidth < 768)
+function _onResize() { isMobile.value = window.innerWidth < 768 }
+onMounted(() => window.addEventListener('resize', _onResize))
+onUnmounted(() => window.removeEventListener('resize', _onResize))
 const activeTab = ref('feed')
 const showStartModal = ref(false)
 const newSessionName = ref('')
@@ -95,7 +100,11 @@ async function startMicrophone() {
       }
     })
   } catch (e) {
-    alert('Microphone access failed: ' + e.message)
+    if (!navigator.mediaDevices) {
+      alert('Microphone unavailable.\n\nBrowser blocks microphone on HTTP. Use one of:\n• http://localhost:8000 (on this machine)\n• https://... via Tailscale')
+    } else {
+      alert('Microphone access failed: ' + e.message)
+    }
   }
 }
 
@@ -119,14 +128,15 @@ async function onSummary() {
 </script>
 
 <style scoped>
-.classroom { display: flex; flex-direction: column; height: 100vh; }
-.desktop-layout { display: flex; flex: 1; overflow: hidden; }
-.feed-panel { flex: 0 0 65%; display: flex; flex-direction: column; }
-.notes-panel { flex: 0 0 35%; display: flex; flex-direction: column; }
-.mobile-layout { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
-.tab-bar { display: flex; border-bottom: 1px solid #f0f0f0; }
+.classroom { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+.desktop-layout { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+.feed-panel { flex: 0 0 65%; display: flex; flex-direction: column; min-height: 0; }
+.notes-panel { flex: 0 0 35%; display: flex; flex-direction: column; min-height: 0; }
+.mobile-layout { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+.tab-bar { display: flex; border-bottom: 1px solid #f0f0f0; flex-shrink: 0; }
 .tab-bar button { flex: 1; padding: 10px; border: none; background: #fafafa; font-size: 13px; font-weight: 600; cursor: pointer; }
 .tab-bar button.active { background: #fff; color: #5856d6; border-bottom: 2px solid #5856d6; }
+.tab-content { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
 .start-modal {
   position: fixed; inset: 0; background: rgba(0,0,0,.4);

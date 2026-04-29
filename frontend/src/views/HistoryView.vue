@@ -65,8 +65,12 @@ const filteredSessions = computed(() =>
 )
 
 onMounted(async () => {
-  const res = await axios.get('/api/sessions')
-  sessions.value = res.data
+  try {
+    const res = await axios.get('/api/sessions')
+    sessions.value = res.data
+  } catch (e) {
+    console.error('Failed to load sessions:', e)
+  }
 })
 
 async function loadSession(id) {

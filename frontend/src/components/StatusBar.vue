@@ -30,24 +30,34 @@ defineEmits(['start', 'stop', 'summary', 'rename'])
 <style scoped>
 .status-bar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 20px; background: #fff; border-bottom: 1px solid #f0f0f0;
-  position: sticky; top: 0; z-index: 10;
+  padding: 10px 16px; background: #fff; border-bottom: 1px solid #f0f0f0;
+  position: sticky; top: 0; z-index: 10; gap: 8px;
 }
-.left { display: flex; align-items: center; gap: 10px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: #8e8e93; }
+.left { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: #8e8e93; }
 .dot.active { background: #34c759; box-shadow: 0 0 6px #34c759; animation: pulse 1.5s infinite; }
 .dot.error { background: #ff3b30; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-.session-name { font-weight: 600; font-size: 15px; }
+.session-name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-name-input {
   font-weight: 600; font-size: 15px; border: none; outline: none;
-  border-bottom: 1px dashed #ccc; background: transparent; min-width: 200px;
+  border-bottom: 1px dashed #ccc; background: transparent;
+  min-width: 0; width: 100%; flex: 1;
 }
-.timer { font-size: 13px; color: #888; font-family: monospace; }
-.right { display: flex; gap: 8px; }
-.btn { padding: 7px 14px; border-radius: 10px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; }
+.timer { flex-shrink: 0; font-size: 13px; color: #888; font-family: monospace; }
+.right { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
+.btn {
+  padding: 7px 12px; border-radius: 10px; border: none; cursor: pointer;
+  font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap;
+}
 .btn-start { background: #5856d6; color: #fff; }
 .btn-stop { background: #ff3b30; color: #fff; }
 .btn-summary { background: #f0f0f5; color: #5856d6; }
 .btn-history { background: #f0f0f5; color: #333; }
+
+/* Mobile: hide AI Summary (available in History view), stack if needed */
+@media (max-width: 480px) {
+  .btn-summary { display: none; }
+  .btn { padding: 7px 10px; font-size: 12px; }
+}
 </style>

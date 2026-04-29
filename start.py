@@ -1,0 +1,146 @@
+"""
+korAsr startup script — auto-generates a self-signed TLS cert so that
+LAN devices (phones, laptops) can access the microphone over HTTPS.
+
+Usage:
+    python start.py            # HTTPS on port 8000
+    python start.py --port 443 # custom port
+
+First run: certificate is generated in certs/ and covers all local IPs.
+Browser will show a security warning — click Advanced → Proceed (once per device).
+"""
+import argparse
+import datetime
+import ipaddress
+import os
+import site
+import socket
+from pathlib import Path
+
+CERT_DIR = Path("certs")
+CERT_PATH = CERT_DIR / "cert.pem"
+KEY_PATH = CERT_DIR / "key.pem"
+
+
+def _add_nvidia_to_path():
+    """
+    Find NVIDIA CUDA DLL directories installed via pip (nvidia-cublas-cu12 etc.)
+    and prepend them to PATH so CTranslate2 / faster-whisper can load them.
+    """
+    search_dirs = []
+    try:
+        search_dirs += site.getsitepackages()
+    except AttributeError:
+        pass
+    try:
+        search_dirs.append(site.getusersitepackages())
+    except AttributeError:
+        pass
+
+    added = []
+    current_path = os.environ.get("PATH", "")
+    for site_dir in search_dirs:
+        nvidia_dir = Path(site_dir) / "nvidia"
+        if not nvidia_dir.exists():
+            continue
+        for pkg_dir in nvidia_dir.iterdir():
+            bin_dir = pkg_dir / "bin"
+            if bin_dir.exists() and str(bin_dir) not in current_path:
+                added.append(str(bin_dir))
+
+    if added:
+        os.environ["PATH"] = os.pathsep.join(added) + os.pathsep + current_path
+        print(f"[CUDA] Added {len(added)} NVIDIA DLL path(s) to PATH")
+
+
+def _local_ips() -> set[str]:
+    ips = {"127.0.0.1"}
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None):
+            addr = info[4][0]
+            try:
+                ipaddress.IPv4Address(addr)
+                ips.add(addr)
+            except ValueError:
+                pass
+    except Exception:
+        pass
+    return ips
+
+
+def generate_cert():
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    print("[SSL] Generating self-signed certificate...")
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    san: list[x509.GeneralName] = [x509.DNSName("localhost")]
+    for ip in _local_ips():
+        san.append(x509.IPAddress(ipaddress.IPv4Address(ip)))
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "korAsr-local")])
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(subject)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now)
+        .not_valid_after(now + datetime.timedelta(days=3650))
+        .add_extension(x509.SubjectAlternativeName(san), critical=False)
+        .sign(key, hashes.SHA256())
+    )
+
+    CERT_DIR.mkdir(exist_ok=True)
+    CERT_PATH.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    KEY_PATH.write_bytes(
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.TraditionalOpenSSL,
+            serialization.NoEncryption(),
+        )
+    )
+    print(f"[SSL] Certificate saved to {CERT_PATH}")
+    print(f"[SSL] Covers IPs: {', '.join(sorted(_local_ips()))}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Start korAsr with HTTPS")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--regen-cert", action="store_true", help="Regenerate certificate")
+    args = parser.parse_args()
+
+    # Must happen BEFORE importing anything CUDA-related
+    _add_nvidia_to_path()
+
+    if not CERT_PATH.exists() or args.regen_cert:
+        generate_cert()
+    else:
+        print(f"[SSL] Using existing certificate ({CERT_PATH})")
+
+    lan_ips = _local_ips() - {"127.0.0.1"}
+    print()
+    print("=" * 55)
+    print("  Access URLs (accept the browser security warning):")
+    print(f"  https://localhost:{args.port}  <- this machine")
+    for ip in sorted(lan_ips):
+        print(f"  https://{ip}:{args.port}  <- LAN / phone")
+    print("=" * 55)
+    print()
+
+    import uvicorn
+    uvicorn.run(
+        "backend.main:app",
+        host="0.0.0.0",
+        port=args.port,
+        ssl_certfile=str(CERT_PATH),
+        ssl_keyfile=str(KEY_PATH),
+    )
+
+
+if __name__ == "__main__":
+    main()

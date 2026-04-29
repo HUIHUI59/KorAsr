@@ -14,3 +14,7 @@ __pycache__/
 node_modules/
 frontend/dist/
 .superpowers/
+certs/
+.claude/
+whisperServerTransVer copy*.py
+重启克劳德
