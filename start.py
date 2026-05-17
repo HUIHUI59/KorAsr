@@ -15,7 +15,16 @@ import ipaddress
 import os
 import site
 import socket
+import sys
 from pathlib import Path
+
+# Windows 控制台默认 cp1252，print 任何非 Latin-1 字符（韩文/中文/→）都会
+# UnicodeEncodeError 把整个 request handler 崩掉。强制 stdout/stderr 走 UTF-8。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
 
 CERT_DIR = Path("certs")
 CERT_PATH = CERT_DIR / "cert.pem"

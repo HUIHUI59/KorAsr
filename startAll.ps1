@@ -47,4 +47,6 @@ Write-Host "  （首次浏览器自签证书警告 → Advanced → Proceed）"
 Write-Host ""
 
 $env:PYTHONUNBUFFERED = '1'
+# Windows 控制台默认 cp1252，碰到 Korean/中文/箭头会 UnicodeEncodeError 崩 WS handler
+$env:PYTHONUTF8 = '1'
 & $KorasrPy "$ProjDir\start.py"
