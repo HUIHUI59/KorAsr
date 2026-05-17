@@ -11,13 +11,38 @@
       @rename="onRename"
     />
 
-    <!-- Desktop: feed + polish stacked vertically | notes on right -->
-    <div class="desktop-layout" v-if="!isMobile">
-      <div class="feed-column">
-        <TranscriptFeed :segments="store.segments" @star="store.toggleStar" class="feed-panel" />
-        <PolishFeed :chunks="store.polishChunks" class="polish-panel" />
+    <!-- Desktop: Live | splitter | Polish, with Notes drawer slide-in -->
+    <div class="desktop-layout" v-if="!isMobile" ref="layoutRef">
+      <div class="pane live-pane" :style="{ flexBasis: livePercent + '%' }">
+        <TranscriptFeed :segments="store.segments" @star="store.toggleStar" />
       </div>
-      <NotesPad v-model="notesModel" class="notes-panel" />
+      <div
+        class="splitter"
+        :class="{ dragging: isDragging }"
+        @mousedown="onSplitterDown"
+        @dblclick="resetSplitter"
+        title="拖动调宽 / 双击重置 50:50"
+      ></div>
+      <div class="pane polish-pane" :style="{ flexBasis: (100 - livePercent) + '%' }">
+        <PolishFeed :chunks="store.polishChunks" />
+      </div>
+
+      <div class="notes-drawer" :class="{ open: notesOpen }">
+        <div class="drawer-header">
+          <span class="drawer-title">📝 笔记</span>
+          <button class="drawer-close" @click="notesOpen = false" title="关闭">✕</button>
+        </div>
+        <NotesPad v-model="notesModel" style="flex:1" />
+      </div>
+
+      <button
+        class="notes-toggle"
+        :class="{ open: notesOpen }"
+        @click="notesOpen = !notesOpen"
+        :title="notesOpen ? '关闭笔记' : '打开笔记'"
+      >
+        {{ notesOpen ? '✕' : '📝' }}
+      </button>
     </div>
 
     <!-- Mobile: tab layout (含精修 tab) -->
@@ -65,6 +90,53 @@ onUnmounted(() => window.removeEventListener('resize', _onResize))
 const activeTab = ref('feed')
 const showStartModal = ref(false)
 const newSessionName = ref('')
+
+// --- desktop layout state: splitter + notes drawer (persisted) ---
+const LS_LIVE_PCT = 'korasr.livePercent'
+const LS_NOTES_OPEN = 'korasr.notesOpen'
+const _storedPct = parseFloat(localStorage.getItem(LS_LIVE_PCT))
+const livePercent = ref(Number.isFinite(_storedPct) && _storedPct >= 20 && _storedPct <= 80 ? _storedPct : 50)
+const notesOpen = ref(localStorage.getItem(LS_NOTES_OPEN) === '1')
+watch(notesOpen, (v) => localStorage.setItem(LS_NOTES_OPEN, v ? '1' : '0'))
+
+const layoutRef = ref(null)
+const isDragging = ref(false)
+function onSplitterDown(e) {
+  e.preventDefault()
+  isDragging.value = true
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  document.addEventListener('mousemove', onSplitterMove)
+  document.addEventListener('mouseup', onSplitterUp)
+}
+function onSplitterMove(e) {
+  if (!isDragging.value || !layoutRef.value) return
+  const rect = layoutRef.value.getBoundingClientRect()
+  // Notes drawer (when open) eats some right-edge width; splitter percent is of Live+Polish region only.
+  const drawerWidth = notesOpen.value ? Math.min(360, window.innerWidth * 0.35) : 0
+  const livePolishWidth = rect.width - drawerWidth - 6 // 6 = splitter width
+  const xRelative = e.clientX - rect.left
+  let pct = (xRelative / livePolishWidth) * 100
+  pct = Math.max(20, Math.min(80, pct))
+  livePercent.value = pct
+}
+function onSplitterUp() {
+  if (!isDragging.value) return
+  isDragging.value = false
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  document.removeEventListener('mousemove', onSplitterMove)
+  document.removeEventListener('mouseup', onSplitterUp)
+  localStorage.setItem(LS_LIVE_PCT, String(Math.round(livePercent.value)))
+}
+function resetSplitter() {
+  livePercent.value = 50
+  localStorage.setItem(LS_LIVE_PCT, '50')
+}
+onUnmounted(() => {
+  document.removeEventListener('mousemove', onSplitterMove)
+  document.removeEventListener('mouseup', onSplitterUp)
+})
 
 const notesModel = computed({
   get: () => store.notes,
@@ -135,11 +207,53 @@ async function onSummary() {
 
 <style scoped>
 .classroom { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
-.desktop-layout { display: flex; flex: 1; overflow: hidden; min-height: 0; }
-.feed-column { flex: 0 0 65%; display: flex; flex-direction: column; min-height: 0; }
-.feed-panel { flex: 1 1 60%; display: flex; flex-direction: column; min-height: 0; }
-.polish-panel { flex: 1 1 40%; display: flex; flex-direction: column; min-height: 0; }
-.notes-panel { flex: 0 0 35%; display: flex; flex-direction: column; min-height: 0; }
+.desktop-layout { display: flex; flex: 1; overflow: hidden; min-height: 0; position: relative; }
+.pane {
+  display: flex; flex-direction: column; min-height: 0; min-width: 200px;
+  flex-grow: 0; flex-shrink: 1;
+}
+.splitter {
+  flex: 0 0 6px; cursor: col-resize; background: #ece9f5;
+  transition: background 0.15s ease; position: relative; z-index: 1;
+}
+.splitter:hover, .splitter.dragging { background: #5856d6; }
+.splitter::before {
+  content: ''; position: absolute; top: 50%; left: -3px; transform: translateY(-50%);
+  width: 12px; height: 36px; border-radius: 6px;
+}
+
+.notes-drawer {
+  width: 0; transition: width 0.25s ease;
+  display: flex; flex-direction: column;
+  background: #fafafe; border-left: 1px solid #ece9f5; overflow: hidden;
+  flex: 0 0 auto;
+}
+.notes-drawer.open { width: min(360px, 35vw); }
+.drawer-header {
+  padding: 10px 16px; border-bottom: 1px solid #ece9f5; background: #f4f3fa;
+  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+}
+.drawer-title { font-size: 14px; font-weight: 700; color: #5856d6; }
+.drawer-close {
+  background: none; border: none; cursor: pointer; font-size: 16px; color: #8e8e93;
+  padding: 4px 8px; border-radius: 6px;
+}
+.drawer-close:hover { background: #ece9f5; color: #1c1c1e; }
+
+.notes-toggle {
+  position: absolute; top: 12px; right: 12px; z-index: 10;
+  width: 40px; height: 40px; border: none; border-radius: 20px;
+  background: #5856d6; color: #fff; font-size: 18px; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(88,86,214,.3);
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+.notes-toggle:hover { transform: scale(1.05); }
+.notes-toggle.open {
+  background: #fff; color: #5856d6; border: 1px solid #ece9f5;
+  right: calc(min(360px, 35vw) + 12px);
+}
+
 .mobile-layout { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
 .tab-bar { display: flex; border-bottom: 1px solid #f0f0f0; flex-shrink: 0; }
 .tab-bar button { flex: 1; padding: 10px; border: none; background: #fafafa; font-size: 13px; font-weight: 600; cursor: pointer; }
