@@ -50,7 +50,7 @@ function formatTs(ms) {
 .star { position: absolute; top: 10px; right: 12px; background: none; border: none; cursor: pointer; font-size: 16px; opacity: .4; }
 .star.active { opacity: 1; }
 .ko { font-size: 15px; font-weight: 600; line-height: 1.5; padding-right: 24px; }
-.zh { font-size: 13px; color: #636366; margin-top: 4px; line-height: 1.5; }
+.zh { font-size: 16px; color: #1c1c1e; margin-top: 4px; line-height: 1.55; }
 .zh.pending { color: #aaa; font-style: italic; animation: blink 1s infinite alternate; }
 @keyframes blink { 0%{opacity:1} 100%{opacity:.4} }
 .ts { font-size: 11px; color: #c7c7cc; margin-top: 6px; }

@@ -7,6 +7,7 @@ export const useSessionStore = defineStore('session', () => {
   const currentSessionId = ref(null)
   const sessionName = ref('')
   const segments = ref([])
+  const polishChunks = ref([])    // 60s 一批的 LLM 精修翻译块
   const isRecording = ref(false)
   const isConnected = ref(false)
   const elapsedMs = ref(0)
@@ -28,6 +29,7 @@ export const useSessionStore = defineStore('session', () => {
     currentSessionId.value = res.data.id
     sessionName.value = name
     segments.value = []
+    polishChunks.value = []
     notes.value = ''
     elapsedMs.value = 0
 
@@ -44,6 +46,19 @@ export const useSessionStore = defineStore('session', () => {
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data)
+      // 精修块独立通道：60s 一批 LLM 重译，追加到 polishChunks
+      if (data.status === 'polish') {
+        polishChunks.value.push({
+          id: data.id,
+          chunkIndex: data.chunk_index,
+          startSeq: data.start_segment_seq,
+          endSeq: data.end_segment_seq,
+          ko: data.ko_combined,
+          zh: data.zh_polished,
+          createdAt: data.created_at,
+        })
+        return
+      }
       if (data.status === 'remove') {
         segments.value = segments.value.filter(s => s.id !== data.id)
         return
@@ -77,8 +92,30 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   function stopSession() {
-    if (ws) ws.close()
-    isRecording.value = false
+    isRecording.value = false   // 立即让 ClassroomView 的 watch 关麦克风、不再 _sendAudio
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      try { ws && ws.close() } catch (_) {}
+      return
+    }
+    // graceful 关闭：先发 stop 信号让 backend 跑完尾段 final/polish 推回来，再让 backend 主动 close
+    try {
+      ws.send(JSON.stringify({ action: 'stop' }))
+    } catch (_) {
+      ws.close()
+      return
+    }
+    // 8s 兜底：backend 卡住就强制关
+    const fallbackClose = setTimeout(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        console.warn('[WS] graceful stop timeout, force closing')
+        try { ws.close() } catch (_) {}
+      }
+    }, 8000)
+    const prevOnClose = ws.onclose
+    ws.onclose = (e) => {
+      clearTimeout(fallbackClose)
+      prevOnClose && prevOnClose(e)
+    }
   }
 
   async function toggleStar(segmentId) {
@@ -105,7 +142,7 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   return {
-    currentSessionId, sessionName, segments, isRecording, isConnected,
+    currentSessionId, sessionName, segments, polishChunks, isRecording, isConnected,
     elapsedMs, elapsedFormatted, notes,
     startSession, stopSession, toggleStar, saveNotes, _sendAudio,
   }

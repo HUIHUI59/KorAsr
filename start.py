@@ -65,7 +65,31 @@ def _local_ips() -> set[str]:
                 pass
     except Exception:
         pass
+    # gethostname 在 Windows 上拿不到 Tailscale/VPN 虚拟网卡 IP，用 env 兜底加上
+    for extra in os.environ.get("EXTRA_CERT_SANS", "").split(","):
+        extra = extra.strip()
+        if not extra:
+            continue
+        try:
+            ipaddress.IPv4Address(extra)
+            ips.add(extra)
+        except ValueError:
+            pass
     return ips
+
+
+def _extra_dns_sans() -> list[str]:
+    raw = os.environ.get("EXTRA_CERT_SANS", "")
+    out = []
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            ipaddress.IPv4Address(token)  # already handled in _local_ips
+        except ValueError:
+            out.append(token)
+    return out
 
 
 def generate_cert():
@@ -80,6 +104,8 @@ def generate_cert():
     san: list[x509.GeneralName] = [x509.DNSName("localhost")]
     for ip in _local_ips():
         san.append(x509.IPAddress(ipaddress.IPv4Address(ip)))
+    for dns in _extra_dns_sans():
+        san.append(x509.DNSName(dns))
 
     now = datetime.datetime.now(datetime.timezone.utc)
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "korAsr-local")])

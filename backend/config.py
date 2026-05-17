@@ -7,9 +7,15 @@ from typing import List, Union
 class Settings(BaseSettings):
     moonshot_api_key: str
 
-    asr_model: str = "large-v3"
+    # ASR 后端选择
+    #   "faster_whisper" — CTranslate2 后端，CPU/CUDA 通用，4090 服务器走这个
+    #   "mlx"            — Apple MLX 框架，走 Mac M-series GPU（Metal），仅 Apple Silicon 可用
+    asr_backend: str = "faster_whisper"
+
+    asr_model: str = "large-v3"                   # 短名（small/medium/large-v3/large-v3-turbo），各后端各自 map 到具体 repo
     asr_device: str = "cuda"
     asr_compute_type: str = "float16"
+    asr_cpu_threads: int = 0                      # CPU 推理线程数（仅 faster_whisper）；0 = CT2 自动；Mac 设为 P-core 数（M4 Pro 设 8）
     asr_beam_size: int = 5                        # up from 3 — better accuracy, ~same latency on 4090
     asr_initial_prompt: str = "안녕하세요. 다음은 한국어 강의 및 회의 내용입니다."  # Korean prompt → far fewer TV hallucinations
     asr_max_buffer_s: float = 8.0

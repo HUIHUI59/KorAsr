@@ -11,20 +11,25 @@
       @rename="onRename"
     />
 
-    <!-- Desktop: side-by-side layout -->
+    <!-- Desktop: feed + polish stacked vertically | notes on right -->
     <div class="desktop-layout" v-if="!isMobile">
-      <TranscriptFeed :segments="store.segments" @star="store.toggleStar" class="feed-panel" />
+      <div class="feed-column">
+        <TranscriptFeed :segments="store.segments" @star="store.toggleStar" class="feed-panel" />
+        <PolishFeed :chunks="store.polishChunks" class="polish-panel" />
+      </div>
       <NotesPad v-model="notesModel" class="notes-panel" />
     </div>
 
-    <!-- Mobile: tab layout -->
+    <!-- Mobile: tab layout (含精修 tab) -->
     <div class="mobile-layout" v-else>
       <div class="tab-bar">
-        <button :class="{ active: activeTab === 'feed' }" @click="activeTab = 'feed'">Transcript</button>
+        <button :class="{ active: activeTab === 'feed' }" @click="activeTab = 'feed'">Live</button>
+        <button :class="{ active: activeTab === 'polish' }" @click="activeTab = 'polish'">✨ Polish</button>
         <button :class="{ active: activeTab === 'notes' }" @click="activeTab = 'notes'">Notes</button>
       </div>
       <div class="tab-content">
         <TranscriptFeed v-if="activeTab === 'feed'" :segments="store.segments" @star="store.toggleStar" />
+        <PolishFeed v-else-if="activeTab === 'polish'" :chunks="store.polishChunks" />
         <NotesPad v-else v-model="notesModel" style="flex:1" />
       </div>
     </div>
@@ -49,6 +54,7 @@ import axios from 'axios'
 import { useSessionStore } from '../stores/session.js'
 import StatusBar from '../components/StatusBar.vue'
 import TranscriptFeed from '../components/TranscriptFeed.vue'
+import PolishFeed from '../components/PolishFeed.vue'
 import NotesPad from '../components/NotesPad.vue'
 
 const store = useSessionStore()
@@ -130,7 +136,9 @@ async function onSummary() {
 <style scoped>
 .classroom { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .desktop-layout { display: flex; flex: 1; overflow: hidden; min-height: 0; }
-.feed-panel { flex: 0 0 65%; display: flex; flex-direction: column; min-height: 0; }
+.feed-column { flex: 0 0 65%; display: flex; flex-direction: column; min-height: 0; }
+.feed-panel { flex: 1 1 60%; display: flex; flex-direction: column; min-height: 0; }
+.polish-panel { flex: 1 1 40%; display: flex; flex-direction: column; min-height: 0; }
 .notes-panel { flex: 0 0 35%; display: flex; flex-direction: column; min-height: 0; }
 .mobile-layout { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
 .tab-bar { display: flex; border-bottom: 1px solid #f0f0f0; flex-shrink: 0; }
