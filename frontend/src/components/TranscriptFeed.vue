@@ -12,7 +12,6 @@
       </button>
       <div class="ko">{{ seg.ko }}</div>
       <div class="zh" :class="{ pending: seg.status !== 'done' }">{{ seg.zh }}</div>
-      <div class="ts">{{ formatTs(seg.timestamp_ms) }}</div>
     </div>
   </div>
 </template>
@@ -40,14 +39,6 @@ watch(() => props.segments.length, async () => {
     feedEl.value.scrollTop = feedEl.value.scrollHeight
   }
 })
-
-function formatTs(ms) {
-  if (ms === null || ms === undefined) return ''
-  const total = Math.floor(ms / 1000)
-  const m = Math.floor(total / 60).toString().padStart(2, '0')
-  const s = (total % 60).toString().padStart(2, '0')
-  return `${m}:${s}`
-}
 </script>
 
 <style scoped>
@@ -66,5 +57,4 @@ function formatTs(ms) {
 .zh { font-size: 16px; color: #1c1c1e; margin-top: 4px; line-height: 1.55; }
 .zh.pending { color: #aaa; font-style: italic; animation: blink 1s infinite alternate; }
 @keyframes blink { 0%{opacity:1} 100%{opacity:.4} }
-.ts { font-size: 11px; color: #c7c7cc; margin-top: 6px; }
 </style>
