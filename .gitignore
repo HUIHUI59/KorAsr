@@ -22,3 +22,4 @@ whisperServerTransVer copy*.py
 重启克劳德
 .DS_Store
 Miniconda3-*.sh
+logs/
