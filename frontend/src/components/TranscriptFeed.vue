@@ -18,14 +18,27 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 const props = defineProps(['segments'])
 defineEmits(['star'])
 const feedEl = ref(null)
 
+// 只在用户处于"贴近底部"时自动滚；滑上去看历史就不抢锚点
+const BOTTOM_THRESHOLD_PX = 80
+const isAtBottom = ref(true)
+function checkAtBottom() {
+  const el = feedEl.value
+  if (!el) return
+  isAtBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_THRESHOLD_PX
+}
+onMounted(() => feedEl.value?.addEventListener('scroll', checkAtBottom, { passive: true }))
+onBeforeUnmount(() => feedEl.value?.removeEventListener('scroll', checkAtBottom))
+
 watch(() => props.segments.length, async () => {
   await nextTick()
-  if (feedEl.value) feedEl.value.scrollTop = feedEl.value.scrollHeight
+  if (feedEl.value && isAtBottom.value) {
+    feedEl.value.scrollTop = feedEl.value.scrollHeight
+  }
 })
 
 function formatTs(ms) {

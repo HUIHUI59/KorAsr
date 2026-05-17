@@ -23,13 +23,25 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 const props = defineProps(['chunks'])
 const chunksEl = ref(null)
 
+const BOTTOM_THRESHOLD_PX = 80
+const isAtBottom = ref(true)
+function checkAtBottom() {
+  const el = chunksEl.value
+  if (!el) return
+  isAtBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_THRESHOLD_PX
+}
+onMounted(() => chunksEl.value?.addEventListener('scroll', checkAtBottom, { passive: true }))
+onBeforeUnmount(() => chunksEl.value?.removeEventListener('scroll', checkAtBottom))
+
 watch(() => props.chunks.length, async () => {
   await nextTick()
-  if (chunksEl.value) chunksEl.value.scrollTop = chunksEl.value.scrollHeight
+  if (chunksEl.value && isAtBottom.value) {
+    chunksEl.value.scrollTop = chunksEl.value.scrollHeight
+  }
 })
 </script>
 
