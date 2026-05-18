@@ -26,6 +26,47 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, OSError):
         pass
 
+# 文件日志 Tee：Windows 下 detached 启动（无 console / -WindowStyle Hidden）时
+# stdout/stderr 没地方可写或写完即丢，调试两眼一抹黑。把所有输出 mirror 到
+# logs/service.log，写多少都不丢；同时仍保留 console 输出（前台跑时一样可见）。
+_LOG_DIR = Path(__file__).resolve().parent / "logs"
+_LOG_DIR.mkdir(exist_ok=True)
+# append 模式：保留历史方便 grep；如果太大用户自己 truncate 或加 rotation
+_LOG_FH = open(_LOG_DIR / "service.log", "a", encoding="utf-8", buffering=1)
+_LOG_FH.write(f"\n===== service start @ {__import__('datetime').datetime.now().isoformat()} =====\n")
+
+class _Tee:
+    def __init__(self, console):
+        self.console = console
+    def write(self, data):
+        try:
+            _LOG_FH.write(data)
+        except Exception:
+            pass
+        try:
+            if self.console is not None:
+                self.console.write(data)
+        except Exception:
+            pass
+        return len(data) if isinstance(data, str) else 0
+    def flush(self):
+        try: _LOG_FH.flush()
+        except Exception: pass
+        try:
+            if self.console is not None:
+                self.console.flush()
+        except Exception:
+            pass
+    def isatty(self):
+        return False
+    def fileno(self):
+        # uvicorn / libraries that probe fileno() get the log file fd; better
+        # than crashing on a missing fileno when console is None.
+        return _LOG_FH.fileno()
+
+sys.stdout = _Tee(sys.stdout)
+sys.stderr = _Tee(sys.stderr)
+
 CERT_DIR = Path("certs")
 CERT_PATH = CERT_DIR / "cert.pem"
 KEY_PATH = CERT_DIR / "key.pem"

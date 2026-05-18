@@ -1,8 +1,13 @@
 # backend/config.py
 import json
+from pathlib import Path
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from typing import List, Union
+
+# 绝对路径定位 .env，避免 CWD 不在项目根（autostart / detached 启动时）
+# 导致 pydantic 找不到文件、所有字段缺失抛 ValidationError。
+_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 class Settings(BaseSettings):
     moonshot_api_key: str
@@ -55,6 +60,6 @@ class Settings(BaseSettings):
 
     # extra="ignore" so env keys consumed elsewhere (RAW_AUDIO_DIR / HF_HOME /
     # EXTRA_CERT_SANS — read via os.environ in handler/start) don't trip pydantic.
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {"env_file": str(_ENV_FILE), "env_file_encoding": "utf-8", "extra": "ignore"}
 
 settings = Settings()
