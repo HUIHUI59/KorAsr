@@ -14,6 +14,14 @@ import sys
 import time
 from pathlib import Path
 
+# Windows 默认 cp1252，print 韩文/中文会 UnicodeEncodeError 把整个进程崩掉。
+# Production start.py 也做了同样的事 — bench_asr.py 要单独跑就必须自己处理。
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+
 
 DEFAULT_MODELS = [
     "large-v3",
