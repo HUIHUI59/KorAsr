@@ -22,6 +22,12 @@ DEFAULT_MODELS = [
 
 
 def load_audio(path: Path):
+    # The WS handler dumps raw float32 LE 16 kHz mono to data/raw/<sid>.pcm,
+    # which is what the production pipeline actually sees - prefer it over
+    # ffmpeg-decoded wav/mp3 so the bench matches reality.
+    if path.suffix.lower() == ".pcm":
+        import numpy as np
+        return np.fromfile(str(path), dtype=np.float32)
     from faster_whisper.audio import decode_audio
     return decode_audio(str(path), sampling_rate=16000)
 
