@@ -42,9 +42,11 @@ def load_audio(path: Path):
 
 def run_one(model_name: str, audio, beam_size: int, initial_prompt: str, device: str, compute_type: str):
     from faster_whisper import WhisperModel
+    print(f"  [{model_name}] loading...", flush=True)
     t0 = time.time()
     model = WhisperModel(model_name, device=device, compute_type=compute_type)
     load_s = time.time() - t0
+    print(f"  [{model_name}] loaded in {load_s:.2f}s, transcribing...", flush=True)
 
     t1 = time.time()
     segments, _info = model.transcribe(
@@ -57,8 +59,9 @@ def run_one(model_name: str, audio, beam_size: int, initial_prompt: str, device:
     )
     text = "".join(s.text for s in segments).strip()
     infer_s = time.time() - t1
+    print(f"  [{model_name}] inferred in {infer_s:.2f}s, text {len(text)} chars", flush=True)
     audio_s = len(audio) / 16000 if hasattr(audio, "__len__") else 0
-    return {
+    result = {
         "model": model_name,
         "load_s": load_s,
         "infer_s": infer_s,
@@ -66,6 +69,10 @@ def run_one(model_name: str, audio, beam_size: int, initial_prompt: str, device:
         "rtf": infer_s / audio_s if audio_s > 0 else 0,
         "text": text,
     }
+    # Release GPU memory before the next model loads
+    del model
+    import gc; gc.collect()
+    return result
 
 
 def main():
@@ -85,10 +92,10 @@ def main():
         if not path.exists():
             print(f"[SKIP] {path} not found", file=sys.stderr)
             continue
-        print(f"\n========== {path.name} ==========")
+        print(f"\n========== {path.name} ==========", flush=True)
         audio = load_audio(path)
         audio_s = len(audio) / 16000
-        print(f"Audio: {audio_s:.2f}s")
+        print(f"Audio: {audio_s:.2f}s", flush=True)
         results = []
         for m in args.models:
             try:
@@ -96,13 +103,20 @@ def main():
                             args.device, args.compute_type)
                 results.append(r)
             except Exception as e:
-                print(f"[FAIL] {m}: {e}", file=sys.stderr)
+                import traceback
+                print(f"[FAIL] {m}: {type(e).__name__}: {e}", flush=True)
+                traceback.print_exc()
 
-        print(f"\n{'Model':55s}  {'Load':>6s}  {'Infer':>7s}  {'RTF':>6s}  Text")
-        print("-" * 130)
+        print(f"\n{'Model':55s}  {'Load':>6s}  {'Infer':>7s}  {'RTF':>6s}  Text", flush=True)
+        print("-" * 130, flush=True)
         for r in results:
             print(f"{r['model']:55s}  {r['load_s']:>6.2f}  {r['infer_s']:>7.2f}  "
-                  f"{r['rtf']:>6.3f}  {r['text'][:70]}")
+                  f"{r['rtf']:>6.3f}  {r['text'][:70]}", flush=True)
+        # Also dump full transcripts for qualitative inspection (truncated text in table)
+        print("\n--- FULL TRANSCRIPTS ---", flush=True)
+        for r in results:
+            print(f"\n[{r['model']}]", flush=True)
+            print(r['text'], flush=True)
 
 
 if __name__ == "__main__":
