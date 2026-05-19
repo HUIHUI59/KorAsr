@@ -28,6 +28,12 @@ DEFAULT_MODELS = [
     "large-v3-turbo",
 ]
 
+# Keep loaded models alive until process exit so ctranslate2 never runs its
+# crashing GPU-cleanup path during the bench. ctranslate2 + Windows + CUDA
+# segfaults silently when a WhisperModel is destructed, killing the script
+# between iterations.
+_MODELS_KEEPALIVE = []
+
 
 def load_audio(path: Path):
     # The WS handler dumps raw float32 LE 16 kHz mono to data/raw/<sid>.pcm,
@@ -45,6 +51,7 @@ def run_one(model_name: str, audio, beam_size: int, initial_prompt: str, device:
     print(f"  [{model_name}] loading...", flush=True)
     t0 = time.time()
     model = WhisperModel(model_name, device=device, compute_type=compute_type)
+    _MODELS_KEEPALIVE.append(model)   # prevent GC-triggered ctranslate2 crash
     load_s = time.time() - t0
     print(f"  [{model_name}] loaded in {load_s:.2f}s, transcribing...", flush=True)
 
