@@ -61,7 +61,11 @@ def run_one(model_name: str, audio, beam_size: int, initial_prompt: str, device:
     infer_s = time.time() - t1
     print(f"  [{model_name}] inferred in {infer_s:.2f}s, text {len(text)} chars", flush=True)
     audio_s = len(audio) / 16000 if hasattr(audio, "__len__") else 0
-    result = {
+    # NOTE: do NOT `del model + gc.collect()` here — under Windows + CUDA the
+    # ctranslate2 cleanup path crashes Python silently (no traceback, just
+    # process exit). Leak the references and let process exit handle it; this
+    # bench is a one-shot CLI not a server, so the leak is harmless.
+    return {
         "model": model_name,
         "load_s": load_s,
         "infer_s": infer_s,
@@ -69,10 +73,6 @@ def run_one(model_name: str, audio, beam_size: int, initial_prompt: str, device:
         "rtf": infer_s / audio_s if audio_s > 0 else 0,
         "text": text,
     }
-    # Release GPU memory before the next model loads
-    del model
-    import gc; gc.collect()
-    return result
 
 
 def main():
